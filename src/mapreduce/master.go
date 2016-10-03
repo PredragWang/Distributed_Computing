@@ -2,7 +2,7 @@ package mapreduce
 
 import "container/list"
 import "fmt"
-import "sync"
+//import "sync"
 
 type WorkerInfo struct {
 	address string
@@ -30,70 +30,47 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
+	DoJobRoutine := func(w *WorkerInfo, jobArgs *DoJobArgs) {
+		var jobReply DoJobReply
+		ok := call(w.address, "Worker.DoJob", jobArgs, &jobReply)
+		if ok == false {
+			fmt.Printf("DoJob %d error\n", jobArgs.JobNumber)
+		}   else {
+			fmt.Printf("DoJob %d done\n", jobArgs.JobNumber)
+		}
+		mr.nextAvailWorker <- w.address
+	}
+
 	fmt.Println("Start running master")
-	var mutex sync.RWMutex
 
 	// process new worker registration
 	go func() {
 		for {
 			worker := <-mr.registerChannel
-			mutex.Lock()
 			mr.Workers[worker] = &WorkerInfo{address: worker, available: true}
 			mr.nAvailable++
 			fmt.Printf("Worker %v is registered\n", worker)
-			mutex.Unlock()
 			mr.nextAvailWorker <- worker
+			//mr.nextAvailWorker <- worker
 		}
 	}()
 
+
 	// start the map phase
 	for job := 0; job < mr.nMap; job++ {
-		for mr.nAvailable == 0 {
-		}
-		go func(job_id int) {
-			availWorker := <-mr.nextAvailWorker
+		availWorker := <-mr.nextAvailWorker
 			// do map job
-			mutex.Lock()
-			mr.nAvailable--
-			mutex.Unlock()
-			w := mr.Workers[availWorker]
-			mapArgs := &DoJobArgs{mr.file, Map, job_id, mr.nReduce}
-			var mapReply DoJobReply
-			ok := call(w.address, "Worker.DoJob", mapArgs, &mapReply)
-			if ok == false {
-				fmt.Printf("DoJob Map job %d error\n", job_id)
-			}	else {
-				fmt.Printf("DoJob Map job %d done\n", job_id)
-			}
-			mr.nextAvailWorker <- availWorker
-			mutex.Lock()
-			mr.nAvailable++
-			mutex.Unlock()
-		}(job)
+		w := mr.Workers[availWorker]
+		mapArgs := &DoJobArgs{mr.file, Map, job, mr.nReduce}
+		go DoJobRoutine(w, mapArgs)
 	}
 	// start the reduce phase
 	for job := 0; job < mr.nReduce; job++ {
-		for mr.nAvailable == 0 {
-		}
-		go func(job_id int) {
-			availWorker := <-mr.nextAvailWorker
-			mutex.Lock()
-			mr.nAvailable--
-			mutex.Unlock()
-			w := mr.Workers[availWorker]
-			reduceArgs := &DoJobArgs{mr.file, Reduce, job_id, mr.nMap}
-			var reduceReply DoJobReply
-			ok := call(w.address, "Worker.DoJob", reduceArgs, &reduceReply)
-			if ok == false {
-				fmt.Printf("DoJob Reduce job %d error\n", job_id)
-			}	else {
-				fmt.Printf("DoJob Reduce job %d done\n", job_id)
-			}
-			mr.nextAvailWorker <- availWorker
-			mutex.Lock()
-			mr.nAvailable++
-			mutex.Unlock()
-		}(job)
+        availWorker := <-mr.nextAvailWorker
+            // do map job
+        w := mr.Workers[availWorker]
+        reduceArgs := &DoJobArgs{mr.file, Reduce, job, mr.nMap}
+		go DoJobRoutine(w, reduceArgs)
 	}
 	return mr.KillWorkers()
 }
