@@ -110,7 +110,6 @@ func (mr *MapReduce) RunMaster() *list.List {
 		reduceArgs := &DoJobArgs{mr.file, Reduce, nextJob, mr.nMap}
 		go DoJobRoutine(w, reduceArgs, nReduce)
 	}
-	//wg.Wait()
 
 	return mr.KillWorkers()
 }
