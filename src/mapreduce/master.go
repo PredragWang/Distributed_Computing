@@ -29,20 +29,21 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
-	var wg sync.WaitGroup
+	var mutex sync.Mutex
+	cond_v := sync.NewCond(&mutex)
+	// Go routine for doing map/reduce jobs
 	DoJobRoutine := func(w *WorkerInfo, jobArgs *DoJobArgs, cJobs int) {
 		var jobReply DoJobReply
 		ok := call(w.address, "Worker.DoJob", jobArgs, &jobReply)
-		if ok == false {
-			mr.failedJobChan <-jobArgs.JobNumber
-		}   else {
+		if ok == false || jobReply.OK == false{
+			mr.unfinishedJobs <- jobArgs.JobNumber
+		} else {
+			mutex.Lock()
+			mr.nCompleted++
+			cond_v.Signal()
+			mutex.Unlock()
 			mr.nextAvailWorker <- w.address
-			//mutex.Lock()
-			//mutex.Unlock()
-			mr.nCompleted ++
 		}
-		fmt.Println(mr.nCompleted)
-		wg.Done()
 	}
 
 	fmt.Println("Start running master")
@@ -61,36 +62,52 @@ func (mr *MapReduce) RunMaster() *list.List {
 	// start the map phase
 	for job := 0; job < mr.nMap+1; job++ {
 		select {
-			case nextJob = <-mr.unfinishedJobs:
-			case availWorker := <-nextAvailWorker:
-			default:
-				nextJob = job
+		case nextJob = <-mr.unfinishedJobs:
+			job--
+		default:
+			nextJob = job
 		}
-		if nextJob >= mr.nMap { break }
+		if nextJob >= mr.nMap {
+			fmt.Printf("Completed: %d, Required: %d\n", mr.nCompleted, mr.nMap)
+			if mr.nCompleted == nMap {
+				break
+			} else {
+				mutex.Lock()
+				cond_v.Wait()
+				mutex.Unlock()
+				continue
+			}
+		}
 		availWorker := <-mr.nextAvailWorker
-			// do map job
+		// do map job
 		w := mr.Workers[availWorker]
 		mapArgs := &DoJobArgs{mr.file, Map, nextJob, mr.nReduce}
-		wg.Add(1)
 		go DoJobRoutine(w, mapArgs, nMap)
 	}
-	wg.Wait()
 
 	mr.nCompleted = 0
 	// start the reduce phase
 	for job := 0; job < mr.nReduce+1; job++ {
 		select {
-			case nextJob = <-mr.failedJobChan:
-				job --
-			default:
-				nextJob = job
+		case nextJob = <-mr.unfinishedJobs:
+			job--
+		default:
+			nextJob = job
 		}
-		if nextJob >= mr.nReduce { break }
-        availWorker := <-mr.nextAvailWorker
-            // do map job
-        w := mr.Workers[availWorker]
-        reduceArgs := &DoJobArgs{mr.file, Reduce, job, mr.nMap}
-		//wg.Add(1)
+		if nextJob >= mr.nReduce {
+			if mr.nCompleted == nReduce {
+				break
+			} else {
+				mutex.Lock()
+				cond_v.Wait()
+				mutex.Unlock()
+				continue
+			}
+		}
+		availWorker := <-mr.nextAvailWorker
+		// do reduce job
+		w := mr.Workers[availWorker]
+		reduceArgs := &DoJobArgs{mr.file, Reduce, nextJob, mr.nMap}
 		go DoJobRoutine(w, reduceArgs, nReduce)
 	}
 	//wg.Wait()
