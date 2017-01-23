@@ -16,17 +16,54 @@ type ViewServer struct {
 	rpccount int32 // for testing
 	me       string
 
-
 	// Your declarations here.
+	curview View
+	primary_missed uint
+	backup_missed uint
+	primary_acked bool
+	//primaryPingSeq uint
+	//backupPingSeq uint
+	//primaryAcked bool
 }
 
 //
 // server Ping RPC handler.
 //
 func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
-
 	// Your code here.
-
+	vs.mu.Lock()
+	if args.Me == vs.curview.Primary {
+		if args.Viewnum == 0 { // The primary becomes alive...
+			if vs.curview.Backup != "" {
+				vs.curview.Primary, vs.curview.Backup = vs.curview.Backup, vs.curview.Primary
+				vs.curview.Viewnum ++
+				vs.backup_missed = 0
+			}
+		} else {
+			if args.Viewnum == vs.curview.Viewnum {
+				vs.primary_acked = true
+			}
+		}
+		vs.primary_missed = 0
+	} else if args.Me == vs.curview.Backup {
+		vs.backup_missed = 0
+	} else {
+		if vs.curview.Primary == "" {
+			vs.curview.Primary = args.Me
+			vs.curview.Viewnum ++
+			//vs.primary_missed = 0
+		} else if vs.curview.Backup == "" {
+			vs.curview.Backup = args.Me
+			vs.curview.Viewnum ++
+			vs.backup_missed = 0
+		}
+	}
+	fmt.Println(args.Me)
+	fmt.Println(vs.curview.Viewnum)
+	fmt.Println(vs.curview.Primary)
+	//fmt.Println(vs.primary_acked)
+	reply.View = vs.curview
+	vs.mu.Unlock()
 	return nil
 }
 
@@ -36,7 +73,7 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 
 	// Your code here.
-
+	reply.View = vs.curview
 	return nil
 }
 
@@ -47,8 +84,34 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 // accordingly.
 //
 func (vs *ViewServer) tick() {
-
 	// Your code here.
+	vs.mu.Lock()
+	if vs.curview.Primary != "" {
+		vs.primary_missed ++
+		if vs.primary_missed >= DeadPings && vs.primary_acked {
+			vs.primary_missed = 0
+			vs.curview.Primary = ""
+			vs.primary_acked = false
+		}
+	}
+	if vs.curview.Backup != "" {
+		vs.backup_missed ++
+		if vs.backup_missed == DeadPings {
+			vs.backup_missed = 0
+			vs.curview.Backup = ""
+		}
+	}
+	// Promote backup if necessary
+	if vs.curview.Primary == "" && vs.curview.Backup != "" {
+		vs.curview.Primary = vs.curview.Backup
+		vs.curview.Backup = ""
+		vs.primary_missed = vs.backup_missed
+		vs.backup_missed = 0
+		vs.curview.Viewnum ++
+	}
+	//fmt.Println(vs.curview.Primary)
+	//fmt.Println(vs.primary_acked)
+	vs.mu.Unlock()
 }
 
 //
@@ -77,6 +140,8 @@ func StartServer(me string) *ViewServer {
 	vs := new(ViewServer)
 	vs.me = me
 	// Your vs.* initializations here.
+	vs.curview = View{0, "", ""}
+	vs.primary_acked = false
 
 	// tell net/rpc about our RPC server and handlers.
 	rpcs := rpc.NewServer()
