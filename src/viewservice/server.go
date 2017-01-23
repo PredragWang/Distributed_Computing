@@ -21,9 +21,8 @@ type ViewServer struct {
 	primary_missed uint
 	backup_missed uint
 	primary_acked bool
-	//primaryPingSeq uint
-	//backupPingSeq uint
-	//primaryAcked bool
+	after_internal_change bool
+	backup_initialized bool
 }
 
 //
@@ -34,7 +33,7 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	vs.mu.Lock()
 	if args.Me == vs.curview.Primary {
 		if args.Viewnum == 0 { // The primary becomes alive...
-			if vs.curview.Backup != "" {
+			if vs.curview.Backup != "" && vs.backup_initialized {
 				vs.curview.Primary, vs.curview.Backup = vs.curview.Backup, vs.curview.Primary
 				vs.curview.Viewnum ++
 				vs.primary_acked = false
@@ -43,27 +42,35 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 		} else {
 			if args.Viewnum == vs.curview.Viewnum {
 				vs.primary_acked = true
+				vs.after_internal_change = false
 			}
 		}
-		vs.primary_missed = 0
+		vs.primary_missed ++
 	} else if args.Me == vs.curview.Backup {
 		vs.backup_missed = 0
+		if args.Viewnum != 0 {
+			vs.backup_initialized = true
+		} else {
+			vs.backup_missed ++
+		}
 	} else {
 		if vs.curview.Primary == "" {
 			vs.curview.Primary = args.Me
+			vs.primary_acked = true
 			vs.curview.Viewnum ++
 			//vs.primary_missed = 0
 		} else if vs.curview.Backup == "" {
+			fmt.Println("Register new backup")
 			vs.curview.Backup = args.Me
-			if vs.primary_acked { vs.curview.Viewnum ++ }
+			if !vs.after_internal_change {
+				vs.curview.Viewnum ++
+				//vs.after_internal_change = false
+			}
+			vs.backup_initialized = false
+			vs.primary_acked = false
 			vs.backup_missed = 0
 		}
 	}
-	fmt.Println(args.Me)
-	fmt.Println(args.Viewnum)
-	fmt.Println(vs.curview.Viewnum)
-	fmt.Println(vs.curview.Primary)
-	fmt.Println(vs.primary_acked)
 	reply.View = vs.curview
 	if !vs.primary_acked { reply.View.Viewnum -- }
 	vs.mu.Unlock()
@@ -74,9 +81,9 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 // server Get() RPC handler.
 //
 func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
-
 	// Your code here.
 	reply.View = vs.curview
+	//if !vs.primary_acked { reply.View.Viewnum -- }
 	return nil
 }
 
@@ -107,20 +114,21 @@ func (vs *ViewServer) tick() {
 		}
 	}
 	// Promote backup if necessary
-	if vs.curview.Primary == "" && vs.curview.Backup != "" {
+	if vs.curview.Primary == "" && vs.curview.Backup != ""  && vs.backup_initialized{
 		vs.curview.Primary = vs.curview.Backup
 		vs.curview.Backup = ""
 		vs.primary_missed = vs.backup_missed
 		vs.backup_missed = 0
+		vs.backup_initialized = false
 		vs.primary_acked = false
 		modified = true
+		fmt.Println("Promote!")
+		vs.after_internal_change = true
 	}
 
 	if modified {
 		vs.curview.Viewnum ++
 	}
-	//fmt.Println(vs.curview.Primary)
-	//fmt.Println(vs.primary_acked)
 	vs.mu.Unlock()
 }
 
