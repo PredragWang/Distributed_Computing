@@ -37,6 +37,7 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 			if vs.curview.Backup != "" {
 				vs.curview.Primary, vs.curview.Backup = vs.curview.Backup, vs.curview.Primary
 				vs.curview.Viewnum ++
+				vs.primary_acked = false
 				vs.backup_missed = 0
 			}
 		} else {
@@ -54,15 +55,17 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 			//vs.primary_missed = 0
 		} else if vs.curview.Backup == "" {
 			vs.curview.Backup = args.Me
-			vs.curview.Viewnum ++
+			if vs.primary_acked { vs.curview.Viewnum ++ }
 			vs.backup_missed = 0
 		}
 	}
 	fmt.Println(args.Me)
+	fmt.Println(args.Viewnum)
 	fmt.Println(vs.curview.Viewnum)
 	fmt.Println(vs.curview.Primary)
-	//fmt.Println(vs.primary_acked)
+	fmt.Println(vs.primary_acked)
 	reply.View = vs.curview
+	if !vs.primary_acked { reply.View.Viewnum -- }
 	vs.mu.Unlock()
 	return nil
 }
@@ -85,13 +88,14 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 //
 func (vs *ViewServer) tick() {
 	// Your code here.
+	modified := false
 	vs.mu.Lock()
 	if vs.curview.Primary != "" {
 		vs.primary_missed ++
 		if vs.primary_missed >= DeadPings && vs.primary_acked {
 			vs.primary_missed = 0
 			vs.curview.Primary = ""
-			vs.primary_acked = false
+			modified = true
 		}
 	}
 	if vs.curview.Backup != "" {
@@ -99,6 +103,7 @@ func (vs *ViewServer) tick() {
 		if vs.backup_missed == DeadPings {
 			vs.backup_missed = 0
 			vs.curview.Backup = ""
+			modified = true
 		}
 	}
 	// Promote backup if necessary
@@ -107,6 +112,11 @@ func (vs *ViewServer) tick() {
 		vs.curview.Backup = ""
 		vs.primary_missed = vs.backup_missed
 		vs.backup_missed = 0
+		vs.primary_acked = false
+		modified = true
+	}
+
+	if modified {
 		vs.curview.Viewnum ++
 	}
 	//fmt.Println(vs.curview.Primary)
