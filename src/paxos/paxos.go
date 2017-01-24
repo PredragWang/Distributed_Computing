@@ -57,6 +57,32 @@ type Paxos struct {
 	// Your data here.
 }
 
+type Acceptor struct {
+	NPrepare int   // highest prepare seen
+	NAccept int   // highest accept seen
+	VAccept interface{}
+}
+// RPC Messages
+type PrepareAegs struct {
+	N int   // prepare number
+}
+
+type PrepareReply struct {
+	N int
+	Ok bool
+	Value interface{}
+}
+
+type AcceptArgs struct {
+	N int
+	V interface{}
+}
+
+type AcceptReply struct {
+	N int
+	Ok bool
+}
+
 //
 // call() sends an RPC to the rpcname handler on server srv
 // with arguments args, waits for the reply, and leaves the
