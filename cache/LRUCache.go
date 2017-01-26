@@ -17,10 +17,6 @@ limitations under the License.
 package cache
 import "sync"
 
-// Cache key and value types
-type KeyType interface{}
-type ValueType interface{}
-
 // Cache entry data structure
 type CacheEntry struct {
     key   KeyType
