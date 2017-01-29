@@ -89,7 +89,7 @@ func (this *LRUCache) addNew(key KeyType, value ValueType) {
     this.cacheListEnd = &newNode
     this.cacheMap[key] = &newNode
     if len(this.cacheMap) > this.capacity {
-        this.removeLRU();
+        go this.removeLRU();
     }
     this.mutex.Unlock()
 }
@@ -100,7 +100,7 @@ func (this *LRUCache) Get(key KeyType) (ValueType, bool) {
     ret_value := ValueType(nil)
     if exists {
       ret_value = node.value
-      this.moveToEnd(node)
+      go this.moveToEnd(node)
     }
 
     return ret_value,exists
@@ -115,8 +115,8 @@ func (this *LRUCache) Put(key KeyType, value ValueType)  {
     node,exists := this.cacheMap[key]
     if exists {
         node.value = value
-        this.moveToEnd(node)
+        go this.moveToEnd(node)
     } else {
-        this.addNew(key, value)
+        go this.addNew(key, value)
     }
 }

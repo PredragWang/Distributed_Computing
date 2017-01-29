@@ -53,6 +53,7 @@ func NewLFUInstance(capacity int) LFUCache {
 
 func (this *LFUCache) removeLFU() ValueType{
     if this.lists.Len() > 0 {
+        this.mutex.Lock()
         lf_ele := this.lists.Front()
         lf := lf_ele.Value.(*CacheListEntry)
         ret_ele := lf.entries.Front()
@@ -62,6 +63,7 @@ func (this *LFUCache) removeLFU() ValueType{
             this.lists.Remove(lf_ele)
             delete(this.frequencyMap, lf.frequency)
         }
+        this.mutex.Unlock()
         return ret_v
     }
     return nil
@@ -137,7 +139,7 @@ func (this *LFUCache) Get(key KeyType) ValueType {
     ce := ce_ele.Value.(*LFUCacheEntry)
     cle_ele,_ := this.frequencyMap[ce.frequency]
     if cle_ele != nil {
-        this.incFreq(cle_ele, ce_ele)
+        go this.incFreq(cle_ele, ce_ele)
     }
     return ce.value
 }
@@ -152,10 +154,10 @@ func (this *LFUCache) Put(key KeyType, value ValueType) bool {
         ce_ele.Value.(*LFUCacheEntry).value = value
         cle_ele,_ := this.frequencyMap[ce_ele.Value.(*LFUCacheEntry).frequency]
         if cle_ele != nil {
-            this.incFreq(cle_ele, ce_ele)
+            go this.incFreq(cle_ele, ce_ele)
         }
     } else {
-        this.addNew(key, value)
+        go this.addNew(key, value)
     }
     return true
 }

@@ -23,60 +23,61 @@ import (
 var lru_tests = []struct {
   key        KeyType
   value      ValueType
-  expected   ValueType
+  expected   []ValueType
 } {
-  {1, 1, 1},
-  {2, 2, 2},
-  {1, nil, 1},
-  {3, 3, 3},
-  {2, nil, nil},
-  {4, 4, 4},
-  {1, nil, nil},
-  {3, nil, 3},
-  {4, nil, 4},
+{1, 1, []ValueType{1, nil}},
+{2, 2, []ValueType{2, nil}},
+{1, nil, []ValueType{1, nil}},
+{3, 3, []ValueType{3, nil}},
+{2, nil, []ValueType{2, nil}},
+{3, nil, []ValueType{3, nil}},
+{4, 4, []ValueType{4, nil}},
+{1, nil, []ValueType{1, nil}},
+{3, nil, []ValueType{3, nil}},
+{4, nil, []ValueType{4, nil}},
 }
 
 var lfu_tests = []struct {
   key        KeyType
   value      ValueType
-  expected   ValueType
+  expected   []ValueType
 } {
-  {1, 1, 1},
-  {2, 2, 2},
-  {1, nil, 1},
-  {3, 3, 3},
-  {2, nil, nil},
-  {3, nil, 3},
-  {4, 4, 4},
-  {1, nil, nil},
-  {3, nil, 3},
-  {4, nil, 4},
+  {1, 1, []ValueType{1, nil}},
+  {2, 2, []ValueType{2, nil}},
+  {1, nil, []ValueType{1, nil}},
+  {3, 3, []ValueType{3, nil}},
+  {2, nil, []ValueType{2, nil}},
+  {3, nil, []ValueType{3, nil}},
+  {4, 4, []ValueType{4, nil}},
+  {1, nil, []ValueType{1, nil}},
+  {3, nil, []ValueType{3, nil}},
+  {4, nil, []ValueType{4, nil}},
 }
 
 func TestLRU(t *testing.T) {
-  lru := NewLRUInstance(2)
+  lru := NewLRUInstance(3)
 	for _, tt := range lru_tests {
     if tt.value != nil {
       lru.Put(tt.key, tt.value)
     } else {
       got_v,_ := lru.Get(tt.key)
-      if got_v != tt.expected {
-  			t.Fatalf("For key %v get %v; want %v", tt.key, got_v, tt.expected )
-  		}
+      if got_v  != tt.expected[0] && got_v != tt.expected[1] {
+  		  t.Fatalf("For key %v get %v; want %v", tt.key, got_v, tt.expected )
+      }
     }
 	}
 }
 
 func TestLFU(t *testing.T) {
-  lfu := NewLFUInstance(2)
+  lfu := NewLFUInstance(3)
 	for _, tt := range lfu_tests {
     if tt.value != nil {
       lfu.Put(tt.key, tt.value)
     } else {
       got_v := lfu.Get(tt.key)
-      if got_v != tt.expected {
-  			t.Fatalf("For key %v get %v; want %v", tt.key, got_v, tt.expected )
-  		}
+      if got_v  != tt.expected[0] && got_v != tt.expected[1] {
+  		  t.Fatalf("For key %v get %v; want %v", tt.key, got_v, tt.expected )
+      }
     }
 	}
 }
